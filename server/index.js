@@ -1,11 +1,25 @@
+const http = require('http')
+const path = require('path')
+const express = require('express')
+const socketIo = require('socket.io')
 const needle = require('needle')
 const config = require('dotenv').config()
 const TOKEN = process.env.TWITTER_BEARER_TOKEN
+const PORT = process.env.PORT || 3000
+
+const app = express()
+
+const server = http.createServer(app)
+const io = socketIo(server)
+
+app.get('/', (req, res) => {
+    res.sendFile(path.resolve(__dirname, '../', 'client', 'index.html'))
+})
 
 const rulesURL = 'https://api.twitter.com/2/tweets/search/stream/rules'
 const streamURL = 'https://api.twitter.com/2/tweets/search/stream?tweet.fields=public_metrics&expansions=author_id'
 
-const rules = [{ value: 'giveaway' }]
+const rules = [{ value: 'Donald Trump' }]
 
 // Get stream rules
 async function getRules() {
@@ -36,7 +50,7 @@ async function setRules() {
 
 //Delete stream rules
 async function deleteRules(rules) {
-    if(!Array.isArray(rules.data)) {
+    if (!Array.isArray(rules.data)) {
         return null
     }
 
@@ -58,7 +72,7 @@ async function deleteRules(rules) {
     return response.body
 }
 
-function streamTweets() {
+function streamTweets(socket) {
     const stream = needle.get(streamURL, {
         headers: {
             Authorization: `Bearer ${TOKEN}`
@@ -68,14 +82,17 @@ function streamTweets() {
     stream.on('data', (data) => {
         try {
             const json = JSON.parse(data)
-            console.log(json)
+            // console.log(json)
+            socket.emit('tweet', json)
         } catch (error) {
-            
+
         }
     })
 }
 
-(async () => {
+io.on('connection',  async () => {
+    console.log('Client connected...')
+
     let currentRules
 
     try {
@@ -87,11 +104,13 @@ function streamTweets() {
 
         //Set rules based on array above
         await setRules()
-        
+
     } catch (error) {
         console.log(error)
         process.exit(1)
     }
 
-    streamTweets()
-})()
+    streamTweets(io)
+})
+
+server.listen(PORT, () => console.log(`Listening on port ${PORT}`))
